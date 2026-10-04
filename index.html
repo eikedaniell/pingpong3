@@ -18,7 +18,7 @@ button:focus-visible,input:focus-visible{outline:3px solid #fff}
 input{text-align:center;text-transform:uppercase;letter-spacing:6px;font-size:22px;width:180px;color:#111}
 .linha{display:flex;gap:8px}
 #codigo{font-size:56px;font-weight:700;letter-spacing:10px;color:var(--bola)}
-#msg{min-height:1.4em;opacity:.85}
+#msg{min-height:1.4em;opacity:.85;text-align:center;max-width:400px;font-size:14px}
 #jogo{display:none;flex-direction:column;align-items:center;gap:8px;width:100%}
 canvas{width:min(100%,900px);aspect-ratio:8/5;background:var(--mesa);border:4px solid var(--linha);border-radius:8px}
 .hidden{display:none!important}
@@ -49,6 +49,20 @@ canvas{width:min(100%,900px);aspect-ratio:8/5;background:var(--mesa);border:4px 
 const $ = id => document.getElementById(id);
 const W = 800, H = 500, PW = 12, PH = 90, R = 9, VENCE = 7;
 const PREFIXO = "pingpong-sala-";
+
+// Configuração com servidores STUN públicos do Google para ultrapassar NAT/Firewall de roteadores Wi-Fi
+const PEER_CONFIG = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' }
+    ]
+  }
+};
+
 let peer, conn, souHost = false;
 let s = novoEstado();       // estado do jogo (host é a autoridade)
 let meuY = H/2, outroY = H/2; // convidado envia seu Y; host guarda em outroY
@@ -78,7 +92,7 @@ function codigoAleatorio(){
 function criarSala(tentativa = 0){
   souHost = true;
   const cod = codigoAleatorio();
-  peer = new Peer(PREFIXO + cod);
+  peer = new Peer(PREFIXO + cod, PEER_CONFIG);
   peer.on("open", () => { $("codigo").textContent = cod; mostrar("espera"); aviso(""); });
   peer.on("error", e => {
     if(e.type === "unavailable-id" && tentativa < 5) return criarSala(tentativa+1);
@@ -89,15 +103,17 @@ function criarSala(tentativa = 0){
     conn = c; configurarConn();
   });
 }
-function entrarSala(){
-  const cod = $("entrada").value.trim().toUpperCase();
+function entrarSala(codParam){
+  const cod = (codParam || $("entrada").value).trim().toUpperCase();
   if(cod.length !== 4) return aviso("Digite o código de 4 letras.");
-  souHost = false; aviso("Conectando…");
-  peer = new Peer();
+  souHost = false; aviso("Conectando via STUN/WebRTC…");
+  peer = new Peer(PEER_CONFIG);
   peer.on("open", () => {
     conn = peer.connect(PREFIXO + cod);
     configurarConn();
-    setTimeout(() => { if(conn && !conn.open) aviso("Não conectou. Confira o código ou tente outra rede (Wi-Fi)."); }, 10000);
+    setTimeout(() => { 
+      if(conn && !conn.open) aviso("Não conectou. Peça para desativar AdBlock/VPN ou verifique a conexão."); 
+    }, 10000);
   });
   peer.on("error", e => aviso(e.type === "peer-unavailable" ? "Sala não encontrada. Confira o código." : "Erro: " + e.type));
 }
@@ -154,7 +170,7 @@ function rebater(py, dir, x){
   s.bx = x;
 }
 function ponto(dir){
-  if(s.p1 >= VENCE) s.fim = "Você venceu!"; // texto ajustado por jogador no desenho
+  if(s.p1 >= VENCE) s.fim = "Você venceu!";
   else if(s.p2 >= VENCE) s.fim = "Convidado venceu!";
   else saque(dir);
 }
@@ -197,10 +213,17 @@ function loop(){
   requestAnimationFrame(loop);
 }
 
-if(typeof Peer === "undefined") aviso("Não consegui carregar a biblioteca PeerJS. Verifique a internet.");
+if(typeof Peer === "undefined") aviso("Não foi possível carregar a biblioteca PeerJS. Verifique a conexão com a internet.");
 $("criar").onclick = () => typeof Peer === "undefined" ? aviso("PeerJS não carregou.") : criarSala();
 $("entrar").onclick = () => typeof Peer === "undefined" ? aviso("PeerJS não carregou.") : entrarSala();
 $("entrada").addEventListener("keydown", e => { if(e.key === "Enter") entrarSala(); });
+
+// Suporte a entrar por parâmetro na URL (?sala=XXXX)
+const urlParams = new URLSearchParams(window.location.search);
+const salaQuery = urlParams.get('sala');
+if (salaQuery) {
+  $("entrada").value = salaQuery;
+}
 </script>
 </body>
 </html>
